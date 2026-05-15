@@ -98,7 +98,7 @@ jobs:
           base=$(mktemp -d)
           git worktree add "$base" "$(git rev-parse HEAD^1)"
           echo "base=$base" >> "$GITHUB_ENV"
-      - uses: cachix/install-nix-action@8887e596b4ee1134dae06b98d573bd674693f47c # v26
+      - uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
       - name: Fetching the pinned tool
         # Update the pinned version using pkgs/test/nixpkgs-check-by-name/scripts/update-pinned-tool.sh
         run: |
