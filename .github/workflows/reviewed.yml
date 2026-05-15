@@ -15,3 +15,40 @@ jobs:
     runs-on: ubuntu-slim
     steps:
       - run: echo This is a no-op only used as a trigger for workflow_run.
+
+  # pull_request_review on a fork PR runs without secrets and with a read-only
+  # GITHUB_TOKEN, so it cannot react to or minimize reviews directly. Upload the
+  # event metadata as an artifact so the `Review` workflow (workflow_run-chained,
+  # privileged base context) can act on it.
+  upload:
+    name: Upload review metadata
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs')
+            const review = context.payload.review
+            const pr = context.payload.pull_request
+            fs.writeFileSync('review-info.json', JSON.stringify({
+              action: context.payload.action,
+              review: {
+                node_id: review.node_id,
+                body: review.body ?? '',
+                state: review.state,
+                user_login: review.user?.login ?? null,
+              },
+              pull_request: {
+                number: pr.number,
+                base_repo: pr.base.repo.full_name,
+                head_repo: pr.head.repo.full_name,
+              },
+            }))
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: review-info
+          path: review-info.json
+          retention-days: 1
+          if-no-files-found: error
