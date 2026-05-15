@@ -63,8 +63,7 @@ jobs:
             // minimizes it, preventing it from cluttering the PR.
             if (
               action === 'dismissed' &&
-              review.user_login === 'github-actions[bot]' &&
-              review.state === 'DISMISSED'
+              review.user_login === 'github-actions[bot]'
             ) {
               await github.graphql(
                 `mutation($node_id: ID!) {
