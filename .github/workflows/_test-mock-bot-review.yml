@@ -1,0 +1,45 @@
+name: Test - mock github-actions[bot] review
+
+# TEST-ONLY helper for nixpkgs-ci-test. Uses the default GITHUB_TOKEN so the
+# created review's author is `github-actions[bot]`, matching the literal filter
+# in review.yml's minimize branch. Remove before any production parity work.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to post the review on
+        required: true
+        type: string
+      body:
+        description: Review body text
+        required: false
+        type: string
+        default: minimize-test-marker
+
+permissions:
+  pull-requests: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  create:
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR: ${{ inputs.pr }}
+          BODY: ${{ inputs.body }}
+        with:
+          script: |
+            const resp = await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: parseInt(process.env.PR, 10),
+              event: 'REQUEST_CHANGES',
+              body: process.env.BODY,
+            })
+            core.info(`Created review id=${resp.data.id} node_id=${resp.data.node_id} state=${resp.data.state} user=${resp.data.user.login}`)
