@@ -4,7 +4,13 @@ on:
   pull_request_review:
     types: [submitted, dismissed]
 
-permissions: {}
+# EXPERIMENT (ci-test only):
+# Wolfgang's 2025-06 commits claim pull_request_review can't get write permissions.
+# Test that claim under GitHub's current behavior. The existing trigger job is kept
+# so that .github/workflows/review.yml (workflow_run-chained) still runs and we can
+# compare both paths.
+permissions:
+  pull-requests: write
 
 defaults:
   run:
@@ -15,3 +21,90 @@ jobs:
     runs-on: ubuntu-slim
     steps:
       - run: echo This is a no-op only used as a trigger for workflow_run.
+
+  experiment:
+    name: Experiment - direct EYES from pull_request_review
+    runs-on: ubuntu-slim
+    timeout-minutes: 3
+    if: github.event.action == 'submitted'
+    steps:
+      - name: Log context
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          APP_ID: ${{ vars.NIXPKGS_CI_APP_ID }}
+          HAS_PRIVATE_KEY: ${{ secrets.NIXPKGS_CI_APP_PRIVATE_KEY != '' }}
+        with:
+          script: |
+            core.info(`EXP event_name=${context.eventName} action=${context.payload.action}`)
+            core.info(`EXP base=${context.repo.owner}/${context.repo.repo}`)
+            core.info(`EXP pr.head.repo=${context.payload.pull_request?.head?.repo?.full_name}`)
+            core.info(`EXP pr.base.repo=${context.payload.pull_request?.base?.repo?.full_name}`)
+            core.info(`EXP review.user=${context.payload.review?.user?.login}`)
+            core.info(`EXP review.state=${context.payload.review?.state}`)
+            core.info(`EXP review.body_first80=${(context.payload.review?.body ?? '').slice(0, 80)}`)
+            core.info(`EXP review.node_id=${context.payload.review?.node_id}`)
+            core.info(`EXP vars.NIXPKGS_CI_APP_ID_set=${(process.env.APP_ID ?? '') !== ''}`)
+            core.info(`EXP secrets.NIXPKGS_CI_APP_PRIVATE_KEY_set=${process.env.HAS_PRIVATE_KEY}`)
+
+      - name: Attempt app-token mint
+        id: app-token
+        if: vars.NIXPKGS_CI_APP_ID
+        continue-on-error: true
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          app-id: ${{ vars.NIXPKGS_CI_APP_ID }}
+          private-key: ${{ secrets.NIXPKGS_CI_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+
+      - name: Log app-token result
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          TOKEN_LEN: ${{ steps.app-token.outputs.token != '' && '64plus' || '0' }}
+          MINT_OUTCOME: ${{ steps.app-token.outcome }}
+        with:
+          script: |
+            core.info(`EXP app_token_step_outcome=${process.env.MINT_OUTCOME}`)
+            core.info(`EXP app_token_set=${process.env.TOKEN_LEN}`)
+
+      - name: Try EYES via app token
+        if: steps.app-token.outputs.token != ''
+        continue-on-error: true
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const node_id = context.payload.review.node_id
+            core.info(`EXP[apptoken] addReaction EYES on ${node_id}`)
+            try {
+              await github.graphql(
+                `mutation($node_id: ID!) {
+                  addReaction(input: { content: EYES, subjectId: $node_id })
+                  { clientMutationId }
+                }`,
+                { node_id }
+              )
+              core.info('EXP[apptoken] addReaction OK')
+            } catch (e) {
+              core.info(`EXP[apptoken] addReaction FAIL: ${e.message}`)
+            }
+
+      - name: Try CONFUSED via GITHUB_TOKEN
+        continue-on-error: true
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const node_id = context.payload.review.node_id
+            core.info(`EXP[gh.token] addReaction CONFUSED on ${node_id}`)
+            try {
+              await github.graphql(
+                `mutation($node_id: ID!) {
+                  addReaction(input: { content: CONFUSED, subjectId: $node_id })
+                  { clientMutationId }
+                }`,
+                { node_id }
+              )
+              core.info('EXP[gh.token] addReaction OK')
+            } catch (e) {
+              core.info(`EXP[gh.token] addReaction FAIL: ${e.message}`)
+            }
