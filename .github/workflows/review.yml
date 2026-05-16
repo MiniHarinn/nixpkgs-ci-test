@@ -57,6 +57,27 @@ jobs:
               fs.readFileSync('review-info.json', 'utf-8'),
             )
 
+            // Defense-in-depth: bind the artifact's pr_number to the PR that
+            // actually fired the upstream Reviewed run. workflow_run.head_branch
+            // and workflow_run.head_repository are set by GitHub from the
+            // upstream trigger (not from anything in the artifact), and the
+            // (fork repo, branch) pair maps to at most one open PR. head_sha
+            // is intentionally not compared - it changes on force-push.
+            const wr = context.payload.workflow_run
+            const { data: pr } = await github.rest.pulls.get({
+              ...context.repo,
+              pull_number: pr_number,
+            })
+            if (
+              pr.head.repo.full_name !== wr.head_repository.full_name ||
+              pr.head.ref !== wr.head_branch
+            ) {
+              throw new Error(
+                `artifact pr_number ${pr_number} doesn't bind to firing PR ` +
+                  `(${wr.head_repository.full_name}:${wr.head_branch})`,
+              )
+            }
+
             // Fetch the review server-side. The artifact only carries
             // identifiers; everything we gate on (state, author, body,
             // node_id) is read from this authoritative response. The
