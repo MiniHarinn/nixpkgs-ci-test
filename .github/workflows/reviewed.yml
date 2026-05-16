@@ -16,10 +16,8 @@ jobs:
     steps:
       - run: echo This is a no-op only used as a trigger for workflow_run.
 
-  # Hand off identifiers to the `Review` workflow, which runs in the
-  # privileged workflow_run context. Only PR and review IDs are written;
-  # everything else (state, body, author) is re-fetched server-side by the
-  # consumer so the artifact is not used as a source of truth.
+  # Hand off IDs to the workflow_run context. The consumer re-fetches the
+  # review server-side, so the artifact is not trusted as a source of truth.
   upload:
     name: Upload review identifiers
     runs-on: ubuntu-slim
@@ -36,7 +34,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: review-info
+          archive: false
           path: review-info.json
-          retention-days: 1
+          retention-days: 1 # One-off usage; there's no reason to retain it for multiple days.
           if-no-files-found: error
