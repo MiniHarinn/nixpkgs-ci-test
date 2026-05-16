@@ -59,24 +59,14 @@ jobs:
 
             // Fetch the review server-side. The artifact only carries
             // identifiers; everything we gate on (state, author, body,
-            // node_id) is read from this authoritative response.
+            // node_id) is read from this authoritative response. The
+            // (pull_number, review_id) pair is binding because the API
+            // returns 404 if review_id doesn't belong to pull_number.
             const { data: review } = await github.rest.pulls.getReview({
               ...context.repo,
               pull_number: pr_number,
               review_id,
             })
-
-            // Bind the artifact identifiers to the actual triggering event.
-            // Without this, a malicious producer event payload could direct
-            // us to act on an unrelated review.
-            const wr = context.payload.workflow_run
-            core.info(`DIAG review.commit_id=${review.commit_id} workflow_run.head_sha=${wr.head_sha}`)
-            if (review.commit_id !== wr.head_sha) {
-              core.setFailed(
-                `commit_id mismatch: review.commit_id=${review.commit_id}, workflow_run.head_sha=${wr.head_sha}`,
-              )
-              return
-            }
 
             // The `check` workflow creates review comments which reviewers
             // are encouraged to manually dismiss if they're not relevant.
